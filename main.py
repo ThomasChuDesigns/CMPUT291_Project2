@@ -13,7 +13,7 @@ def test():
     for row in cursor.fetchall():
         print(row['Name'])
 
-    print(checkEquivalence())
+    decomposeToBCNF()
 
     return
 
@@ -55,6 +55,64 @@ def main():
 
 def convertToBCNF():
     pass
+
+def decomposeToBCNF():
+    # R format => {attr: [a1, a2, ...], fd: [fd1, fd2, ...]}
+    # decomp is a list of R decomposed using algorithm is CMPUT291 Slide 41
+
+    tbl = input('Enter a table to decompose: ')
+    result = cursor.execute('SELECT Attributes, FDs FROM InputRelationSchemas WHERE Name = ?', (tbl,)).fetchone()
+
+    # handle error
+    if not result:
+        print('Invalid Table: {}!'.format(tbl))
+        return
+
+    attributes = set(result['Attributes'].split(','))
+    fd_list = get_func_dependencies(result['FDs'])
+    
+    decomp = [{'attributes': set(attributes), 'fd': dict(fd_list)}]
+    
+    # compute closures for each functional dependecy lhs
+    # retrieve the lhs that are candidate keys or superkeys
+    keys = []
+    for candid in fd_list.keys():
+        candid_closure = getClosure(candid, fd_list)
+        if candid_closure == attributes:
+            keys.append(candid)
+
+    for fd_lhs in fd_list:
+
+        # lhs of function dependency is not key, decompose
+        if fd_lhs not in keys:
+            # calculate set difference of Y-X
+            set_lhs = set(fd_lhs.split(','))
+            set_rhs = set(fd_list[fd_lhs].split(','))
+            fd_diff = set_rhs.difference(set_lhs)
+
+            # compute new relation attributes and fd
+            new_attr = set_lhs.union(set_rhs)
+            new_fd = decomp[0]['fd'].pop(fd_lhs, None)
+
+            # update FD in original R st S - (Y-X)
+            for lhs in decomp[0]['fd'].keys():
+                adj_rhs = list(set(decomp[0]['fd'][lhs].split(',')).difference(set(new_fd.split(','))))
+                decomp[0]['fd'][lhs] = ','.join(adj_rhs)
+            
+            # prepare new dictionary relation for decomposition list
+            newR = {
+                'attributes': new_attr,
+                'fd': {fd_lhs: new_fd}
+            }
+
+            # decompose original R, creating new schema for Y-X
+            decomp[0]['attributes'].difference_update(fd_diff)
+            decomp.append(newR)
+
+    print(decomp)
+    return
+    
+
 
 def checkEquivalence():
     # compares the attribute closure of 2 input attributes
