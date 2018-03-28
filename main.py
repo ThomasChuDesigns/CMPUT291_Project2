@@ -13,7 +13,7 @@ def test():
     for row in cursor.fetchall():
         print(row['Name'])
 
-    attributeClosures()
+    print(checkEquivalence())
 
     return
 
@@ -56,10 +56,47 @@ def main():
 def convertToBCNF():
     pass
 
-def checkEquivalence(tbl1, tbl2):
+def checkEquivalence():
     # compares the attribute closure of 2 input attributes
-    # if F1+ == F2+ then return true else false
-    pass
+    # Ktotal = Kfd1 U Kfd2
+    # compute closure for each key in fd1 and fd2
+    # if a closure does not equal for fd1 and fd2 return false
+    # return true if all closure are equal
+
+    tbl1 = input('Enter a table: ')
+    tbl2 = input('Enter another table to compare: ')
+    fd1 = []
+    fd2 = []
+
+    # parse input tables
+    for table in tbl1.split(','):
+        fd1.append(cursor.execute('SELECT FDs FROM InputRelationSchemas WHERE Name = ?', (table,)).fetchone()['FDs'])
+    for table in tbl2.split(','):
+        fd2.append(cursor.execute('SELECT FDs FROM InputRelationSchemas WHERE Name = ?', (table,)).fetchone()['FDs'])
+
+    # get Fd's for input schemas
+    fd1 = get_func_dependencies('; '.join(fd1))
+    fd2 = get_func_dependencies('; '.join(fd2))
+
+    # is fd1 < fd2 ?
+    for fd1_key in fd1.keys():
+        closure_fd1 = getClosure(fd1_key, fd1)
+        closure_fd2 = getClosure(fd1_key, fd2)
+
+        if(closure_fd1 != closure_fd2):
+            return False
+
+
+    # is fd2 > fd1 ?
+    for fd2_key in fd2.keys():
+        closure_fd1 = getClosure(fd2_key, fd1)
+        closure_fd2 = getClosure(fd2_key, fd2)
+
+        if(closure_fd1 != closure_fd2):
+            return False
+
+    # fd1 < fd2, fd2 > fd1 --> fd1 == fd2
+    return True
 
 def attributeClosures():
     # get input schema and attributes to calculate
@@ -102,7 +139,7 @@ def getClosure(attribute, func_dependencies):
                 closure = closure.union(func_dependencies[lhs].split(','))
     
     # returns sorted closure alphabetically
-    return sorted(closure, key = lambda x: ord(x))
+    return set(sorted(closure, key = lambda x: ord(x[0].upper())))
 
 def get_func_dependencies(FD_list):
     # given a string of FDs from database, return a dictionary of the parsed FD
