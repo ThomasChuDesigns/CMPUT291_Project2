@@ -19,42 +19,41 @@ def test():
 
 def main():
     global connection, cursor
-    db_file = input('Enter input database file:')
+    db_file = input('Enter input database file: ')
     connection = sqlite3.connect(db_file)
     cursor = connection.cursor()
     cursor.row_factory = sqlite3.Row
-    
-
-    print("Select an option given below:")
-    print('-'*36)
-    print('Enter (1) to normalize and decompose to BCNF')
-    print('Enter (2) to get attribute closures')
-    print('Enter (3) to check equivalence of 2 relations')
-    print('Enter \'exit\' to leave program')
-    print('-'*36)
+    cursor.execute('PRAGMA foreign_keys = ON')
 
     isExit = False
-    choice = input('')
+
     while(not isExit):
-        if(choice == 1):
-            convertToBCNF()
+        print("\nSelect an option given below:")
+        print('-'*36)
+        print('Enter (1) to normalize and decompose to BCNF')
+        print('Enter (2) to get attribute closures')
+        print('Enter (3) to check equivalence of 2 relations')
+        print('Enter \'exit\' to leave program')
+        print('-'*36)
+        choice = input('Enter option here: ')
+        if(choice == '1'):
+            decomposeToBCNF()
             continue
-        elif(choice == 2):
-            pass
-            
+        elif(choice == '2'):
+            attributeClosures()
             continue
-        elif(choice == 3):
-            tbl_1 = input('Enter a table name to check: ')
-            tbl_2 = input('Enter a table to compare to: ')
-            #checkEquivalence(tbl1, tbl2)
+        elif(choice == '3'):
+            tbl1 = input('Enter a relation name to check: ')
+            tbl2 = input('Enter a relation to compare to: ')
+            if(checkEquivalence(tbl1, tbl2)):
+                print('The two relations are equal!')
+            else:
+                print('The two relations are not equal...')
             continue
         elif(choice == 'exit'):
             isExit = True
             continue
     return
-
-def convertToBCNF():
-    pass
 
 def decomposeToBCNF():
     # R format => {attr: [a1, a2, ...], fd: [fd1, fd2, ...]}
@@ -137,10 +136,10 @@ def decomposeToBCNF():
         
         # insert new row into OutputRelationSchemas
         cursor.execute('INSERT OR REPLACE INTO OutputRelationSchemas VALUES(?, ?, ?)', (row_name, row_attributes, row_fd,))
+        print('{} created in OutputRelationSchemas'.format(row_name))
 
     # save changes
     connection.commit()
-
     # check if relations are dependency preserving
     if(checkEquivalence(tbl, ','.join(name_list))):
        print('Normalized Schema are dependency preserving!')
@@ -198,12 +197,8 @@ def decomposeToBCNF():
 
         cursor.execute(query)
         cursor.execute('INSERT OR REPLACE INTO {} SELECT {} FROM {}'.format(decomp_relation, results['Attributes'],tbl))
-        for row in cursor.execute('SELECT * FROM {}'.format(decomp_relation)).fetchall():
-            for attr in row:
-                print(attr, end = ' ')
-            print()
 
-
+    connection.commit()
 
     return
     
@@ -300,7 +295,7 @@ def get_func_dependencies(FD_list):
 
     # convert FDs string into a list of FD
     FD_list = FD_list.split('; ')
-    
+
     for FD in FD_list:
         # remove curly brackets
         FD = FD.replace('{', '')
@@ -340,5 +335,5 @@ def parseAttributesInput(attr_input):
 
 
 if __name__ == "__main__":
-    test()
-    #main()
+    #test()
+    main()
