@@ -74,7 +74,7 @@ def decomposeToBCNF(connection, cursor, debug=False):
 
             # add new relation
             decomp.append({'Attributes': new_attributes, 'FDs': new_fd})
-            print(decomp)
+            
             break
     # END OF DECOMPOSITION BCNF
 
@@ -167,13 +167,19 @@ def decomposeToBCNF(connection, cursor, debug=False):
         if foreign_keys: foreign_keys = ', ' + ','.join(foreign_keys) 
         else: foreign_keys = ''
 
+        cursor.execute("DROP TABLE IF EXISTS {};".format(decomp_relation))
         query = """
-        CREATE TABLE IF NOT EXISTS {}({}, PRIMARY KEY ({}){});
+        CREATE TABLE {}({}, PRIMARY KEY ({}){});
         """.format(decomp_relation, query_attr, primary_key, foreign_keys)
 
         print(query)
         cursor.execute(query)
-        cursor.execute('INSERT OR REPLACE INTO {} SELECT {} FROM {}'.format(decomp_relation, results['Attributes'],tbl))
+    
+    # populate decomp tables with data from original table
+    for decomp_tbl in name_list:
+        attributes = cursor.execute('PRAGMA table_info({})'.format(decomp_tbl)).fetchall()
+        col_names = ','.join(list(map(lambda x: x['name'], attributes)))
+        cursor.execute('INSERT OR REPLACE INTO {} SELECT {} FROM {}'.format(decomp_tbl, col_names, tbl))
 
     if not debug: connection.commit()
 

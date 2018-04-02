@@ -25,7 +25,7 @@ def main():
     connection = sqlite3.connect(db_file)
     cursor = connection.cursor()
     cursor.row_factory = sqlite3.Row
-    cursor.execute('PRAGMA foreign_keys = ON')
+    #cursor.execute('PRAGMA foreign_keys = ON')
 
     isExit = False
 
@@ -59,5 +59,5 @@ def main():
 
 
 if __name__ == "__main__":
-    test()
-    #main()
+    #test()
+    main()
