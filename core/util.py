@@ -33,6 +33,7 @@ def get_func_dependencies(FD_list):
         FD = FD.split('=>')
 
         # convert FD to a dictionary format
+        if not FD[0]: continue
         func_dependencies[FD[0]] = FD[1]
 
     return func_dependencies
@@ -55,3 +56,12 @@ def parseAttributesInput(attr_input):
     
     # returns a list of attributes from input string
     return out
+
+
+def findCandidateKeys(attributes, fds):
+    results = []
+    for fd_key in fds:
+        if(set(getClosure(fd_key, fds)) == set(attributes)):
+            results.append(fd_key)
+    
+    return results

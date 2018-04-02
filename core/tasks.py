@@ -1,11 +1,11 @@
 from core.util import *
 
-def decomposeToBCNF(connection, cursor):
+def decomposeToBCNF(connection, cursor, debug=False):
     # R format => {attr: [a1, a2, ...], fd: [fd1, fd2, ...]}
     # decomp is a list of R decomposed using algorithm is CMPUT291 Slide 41
 
     tbl = input('Enter a table to decompose: ')
-    result = cursor.execute('SELECT Attributes, FDs FROM InputRelationSchemas WHERE Name = ?', (tbl,)).fetchone()
+    result = cursor.execute('SELECT * FROM InputRelationSchemas WHERE Name = ?', (tbl,)).fetchone()
 
     # handle error
     if not result:
@@ -15,81 +15,101 @@ def decomposeToBCNF(connection, cursor):
     attributes = result['Attributes'].split(',')
     fd_list = get_func_dependencies(result['FDs'])
 
-    decomp = [{'attributes': list(attributes), 'fd': dict(fd_list)}]
-    
-    # compute closures for each functional dependecy lhs
-    # retrieve the lhs that are candidate keys or superkeys
-    keys = []
-    for candid in fd_list.keys():
-        candid_closure = set(getClosure(candid, fd_list))
-        if candid_closure == set(attributes):
-            keys.append(candid)
+    decomp = [{'Attributes': list(attributes), 'FDs': dict(fd_list)}]
+    isBCNF = False
 
-    for fd_lhs in fd_list.keys():
+    # decompose relations while not BCNF
+    while not isBCNF:
+        isBCNF = True
 
-        # lhs of function dependency is not key, decompose
-        if fd_lhs not in keys:
-            # calculate set difference of Y-X
-            set_lhs = fd_lhs.split(',')
-            set_rhs = fd_list[fd_lhs].split(',')
-            fd_diff = set(set_rhs).difference(set(set_lhs))
+        # go through every relation until we find a violation
+        for relation in decomp:
+            relation_keys = findCandidateKeys(relation['Attributes'], relation['FDs'])
+            # is BCNF if FDs LHS == relation_keys
+            if set(relation_keys) == set(relation['FDs'].keys()): continue
+            isBCNF = False
 
-            # compute new relation attributes and fd
-            new_attr = set_lhs
-            for item in set_rhs:
-                if item not in new_attr:
-                    new_attr.append(item)
+            # find a FD that is violating BCNF
+            violation_key = None
+            for fd_lhs in relation['FDs'].keys():
+                # found FD that violates BCNF
+                if fd_lhs not in relation_keys:
+                    violation_key = fd_lhs
+                    break
             
-            new_fd = decomp[0]['fd'].pop(fd_lhs, None)
-
-            # update FD in original R st S - (Y-X)
-            for lhs in decomp[0]['fd'].keys():
-                new_rhs = decomp[0]['fd'][lhs].split(',')
-                for item in decomp[0]['fd'][lhs].split(','):
-                    if item in fd_diff:
-                        new_rhs.remove(item)
-                decomp[0]['fd'][lhs] = ','.join(new_rhs)
+            # get violating attributes
+            violation_attributes = set(violation_key.split(',')).union(set(relation['FDs'][violation_key].split(',')))
+            rhs_diff = violation_attributes.difference(set(fd_lhs.split(',')))
             
-            # prepare new dictionary relation for decomposition list
-            newR = {
-                'attributes': new_attr,
-                'fd': {fd_lhs: new_fd}
-            }
+            # prepare relation splitting
+            orig_fd = dict(relation['FDs'])
+            new_fd = {violation_key: orig_fd.pop(violation_key, None)}
+            
+            orig_attributes = relation['Attributes']
+            new_attributes = violation_key.split(',')
 
-            # decompose original R, creating new schema for Y-X
-            for item in fd_diff:
-                if item in decomp[0]['attributes']:
-                    decomp[0]['attributes'].remove(item)
+            # update FD for original relation
+            for lhs in relation['FDs']:
+                # no lhs found continue
+                if not orig_fd.get(lhs, None): continue
+                
+                # update attributes in FD accordingly
+                fd_rhs = set(orig_fd[lhs].split(','))
+                
+                # FD RHS subset of violated attributes or FD LHS contains violated attributes
+                if fd_rhs.issubset(rhs_diff) or set(lhs.split(',')).intersection(rhs_diff):
+                    orig_fd.pop(lhs, None)
+                # FD RHS contains violated attributes, just remove from RHS
+                if fd_rhs.intersection(rhs_diff):
+                    orig_fd[lhs] = ','.join(list(fd_rhs.difference(rhs_diff)))
+                    if orig_fd[lhs] == '': orig_fd.pop(lhs, None)
 
-            decomp.append(newR)
+            # move violated attributes into new list of attributes
+            orig_attributes = list(set(orig_attributes).difference(rhs_diff))
+            new_attributes = list(violation_attributes)
+
+            # update original relation
+            relation['Attributes'] = orig_attributes
+            relation['FDs'] = orig_fd
+
+            # add new relation
+            decomp.append({'Attributes': new_attributes, 'FDs': new_fd})
+            print(decomp)
+            break
+    # END OF DECOMPOSITION BCNF
 
     name_list = []
     # create new rows for relations in OutputRelationSchemas
     for relation in decomp:
         # create output name
-        row_name = '{}_{}'.format(tbl, '_'.join(relation['attributes']))
+        row_name = '{}_{}'.format(tbl, '_'.join(sorted(relation['Attributes'])))
         name_list.append(row_name)
 
         # parse new attributes of each relation into string
-        row_attributes = ','.join(relation['attributes'])
+        row_attributes = ','.join(relation['Attributes'])
 
         # parse new fd of each relation into string
         row_fd = []
-        for key in relation['fd'].keys():
-            row_fd.append( "{{{}}}=>{{{}}}".format(key, relation['fd'][key]) )
+        for key in relation['FDs'].keys():
+            row_fd.append( "{{{}}}=>{{{}}}".format(key, relation['FDs'][key]) )
         row_fd = '; '.join(row_fd)
         
         # insert new row into OutputRelationSchemas
         cursor.execute('INSERT OR REPLACE INTO OutputRelationSchemas VALUES(?, ?, ?)', (row_name, row_attributes, row_fd,))
         print('{} created in OutputRelationSchemas'.format(row_name))
+        print('{}\t{}\t{}'.format(row_name, row_attributes, row_fd))
+        
+    # save changes if not debugging
+    if not debug: connection.commit()
 
-    # save changes
-    connection.commit()
     # check if relations are dependency preserving
     if(checkEquivalence(cursor, tbl, ','.join(name_list))):
        print('Normalized Schema are dependency preserving!')
     else:
         print('Normalized Schema are not dependency preserving!')
+
+    # no instance of table in database return
+    if not result['hasInstance']: return
 
     # create tables for new decomposed relations
     for decomp_relation in name_list:
@@ -112,17 +132,29 @@ def decomposeToBCNF(connection, cursor):
             for row in table_info:
                 if attr == row['name']:
                     type_list[attr] = str(row['type'])
+        
+        # compute primary key for relation by union of FD
+        primary_key = []
+        if decomp_fd:
+            # create a table using a primary key based on functional dependencies
+            for lhs in decomp_fd.keys():
+                for attr in lhs.split(','):
+                    if attr not in primary_key:
+                        primary_key.append(attr)
+            
+            primary_key = ','.join(primary_key)
 
-        # find foreign keys
-        for fd_lhs in decomp_fd:
-            for attr in fd_lhs.split(','):
+        # no FD therefore all attributes make a key
+        else : primary_key = results['Attributes']
 
-                # check every relation except for itself and find key == FD lhs
-                for relations in decomp:
-                    if results['Attributes'] != ','.join(relations['attributes']):
-                        if attr in relations['fd'].keys():
-                            foreign_tbl = '{}_{}'.format(tbl, '_'.join(relations['attributes']))
-                            foreign_keys.append('FOREIGN KEY ({}) REFERENCES {}'.format(attr, foreign_tbl))
+        pk_comp = set(primary_key.split(','))
+        for relations in decomp:
+            if results['Attributes'] != ','.join(relations['Attributes']):
+                for lhs in relations['FDs'].keys():
+                    # if LHS of FD a subset of primary key add to foreign key
+                    if set(lhs.split(',')).issubset(pk_comp):
+                        foreign_tbl = '{}_{}'.format(tbl, '_'.join(sorted(relations['Attributes'])))
+                        foreign_keys.append('FOREIGN KEY ({}) REFERENCES {}'.format(lhs, foreign_tbl))
 
 
         # query format: CREATE TABLE IF NOT EXISTS {table_name} ({attributes}, {primary keys}, {foreign keys})
@@ -132,18 +164,18 @@ def decomposeToBCNF(connection, cursor):
         query_attr = ','.join(query_attr)
 
         # create foreign key statements
-        if foreign_keys: foreign_keys = ', ' + ','.join(foreign_keys)
+        if foreign_keys: foreign_keys = ', ' + ','.join(foreign_keys) 
         else: foreign_keys = ''
-        
-        # create a table
+
         query = """
         CREATE TABLE IF NOT EXISTS {}({}, PRIMARY KEY ({}){});
-        """.format(decomp_relation, query_attr, ','.join(decomp_fd.keys()), foreign_keys,)
+        """.format(decomp_relation, query_attr, primary_key, foreign_keys)
 
+        print(query)
         cursor.execute(query)
         cursor.execute('INSERT OR REPLACE INTO {} SELECT {} FROM {}'.format(decomp_relation, results['Attributes'],tbl))
 
-    connection.commit()
+    if not debug: connection.commit()
 
     return
     

@@ -10,12 +10,12 @@ def test():
     connection = sqlite3.connect(db_file)
     cursor = connection.cursor()
     cursor.row_factory = sqlite3.Row
-
-    cursor.execute('SELECT Name FROM InputRelationSchemas')
-    for row in cursor.fetchall():
-        print(row['Name'])
-
-    decomposeToBCNF()
+    cursor.execute("DELETE FROM OutputRelationSchemas")
+    cursor.execute("INSERT OR REPLACE INTO InputRelationSchemas VALUES ('R2', 'A,B,C,D,E', '{A}=>{B,C}; {C}=>{D,E}', 0)")
+    cursor.execute("INSERT OR REPLACE INTO InputRelationSchemas VALUES ('R3', 'A,B,C,D', '{A,B}=>{C}; {B}=>{D}; {C}=>{A}', 0)")
+    cursor.execute("INSERT OR REPLACE INTO InputRelationSchemas VALUES ('R4', 'A,B,C,F,G,H', '{A,B,H}=>{C}; {B,G,H}=>{F}; {F}=>{A,H}; {B,H}=>{G}', 0)")
+    cursor.execute("INSERT OR REPLACE INTO InputRelationSchemas VALUES ('R5', 'A,B,C,D,E,F,G,H', '{A,B,H}=>{C}; {A}=>{D,E}; {B,G,H}=>{F}; {F}=>{A,D,H}; {B,H}=>{G,E}', 0)")
+    decomposeToBCNF(connection, cursor, debug=True)
 
     return
 
@@ -59,5 +59,5 @@ def main():
 
 
 if __name__ == "__main__":
-    #test()
-    main()
+    test()
+    #main()
